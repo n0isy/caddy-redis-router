@@ -1,0 +1,25 @@
+# Minimal local example for caddy-redis-router.
+# Used by ../build.sh for an end-to-end smoke test against a Redis + whoami pair.
+{
+	admin off
+	auto_https off
+	order redis_router before reverse_proxy
+}
+
+:80 {
+	# never trust a client-supplied internal token — the router re-sets it
+	request_header -X-Internal-Auth
+
+	redis_router {
+		address    redis:6379
+		key_prefix "route:"
+		key        {http.request.host}
+		var        upstream
+		on_miss    503
+	}
+	reverse_proxy {http.vars.upstream}
+
+	handle_errors {
+		respond "no route ({err.status_code})" {err.status_code}
+	}
+}

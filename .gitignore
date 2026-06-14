@@ -1,0 +1,7 @@
+# built binaries
+/caddy
+/caddy-test
+*.bin
+
+# local smoke-test scratch
+/example/caddy

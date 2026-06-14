@@ -1,0 +1,19 @@
+# End-to-end smoke test for caddy-redis-router (driven by ./smoke.sh).
+# redis (route table) + whoami (backend that echoes headers) + the locally-built
+# ../caddy-test binary mounted into a stock alpine image.
+services:
+  redis:
+    image: redis:7-alpine
+
+  backend:
+    image: traefik/whoami
+
+  caddy:
+    image: alpine:3
+    depends_on: [redis, backend]
+    command: ["/caddy-test", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    volumes:
+      - ../caddy-test:/caddy-test:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "127.0.0.1:8099:80"
