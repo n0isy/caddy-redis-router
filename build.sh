@@ -4,7 +4,7 @@
 #
 # It (1) tidies the module's go.mod/go.sum, then (2) xcaddy-builds a Caddy binary
 # from the LOCAL source (via a replace directive) together with the same plugin
-# set the ctotwin.com host runs, pinned to the same Caddy core version. Finally it
+# set the desk.cloud host runs, pinned to the same Caddy core version. Finally it
 # lists the modules so you can eyeball that redis_router linked in.
 #
 # Usage:  ./build.sh            # tidy + build ./caddy-test + list modules
