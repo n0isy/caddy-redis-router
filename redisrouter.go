@@ -77,8 +77,9 @@ type RedisRouter struct {
 	// Timeout bounds each Redis lookup. Default 2s.
 	Timeout caddy.Duration `json:"timeout,omitempty"`
 
-	client *redis.Client
-	logger *zap.Logger
+	client  *redis.Client
+	logger  *zap.Logger
+	metrics *routerMetrics
 }
 
 // route is the JSON document stored at each Redis key.
@@ -132,6 +133,13 @@ func (m *RedisRouter) Provision(ctx caddy.Context) error {
 		return fmt.Errorf("redis_router: cannot reach Redis at %s: %w", m.Address, err)
 	}
 
+	var err error
+	m.metrics, err = newRouterMetrics(ctx.GetMetricsRegistry())
+	if err != nil {
+		_ = m.client.Close()
+		return fmt.Errorf("redis_router metrics: %w", err)
+	}
+
 	m.logger.Info("redis_router provisioned",
 		zap.String("address", m.Address),
 		zap.Int("db", m.DB),
@@ -157,14 +165,17 @@ func (m *RedisRouter) ServeHTTP(w http.ResponseWriter, r *http.Request, next cad
 	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(m.Timeout))
 	defer cancel()
 
+	finishLookup := m.metrics.begin()
 	raw, err := m.client.Get(ctx, key).Result()
 	switch {
 	case err == redis.Nil:
+		finishLookup("miss")
 		if m.OnMiss < 0 {
 			return next.ServeHTTP(w, r)
 		}
 		return caddyhttp.Error(m.OnMiss, fmt.Errorf("redis_router: no route for %q", key))
 	case err != nil:
+		finishLookup("redis_error")
 		return caddyhttp.Error(http.StatusBadGateway,
 			fmt.Errorf("redis_router: lookup failed for %q: %w", key, err))
 	}
@@ -175,10 +186,12 @@ func (m *RedisRouter) ServeHTTP(w http.ResponseWriter, r *http.Request, next cad
 		rt = route{Upstream: raw}
 	}
 	if rt.Upstream == "" {
+		finishLookup("invalid_route")
 		return caddyhttp.Error(http.StatusBadGateway,
 			fmt.Errorf("redis_router: empty upstream for %q", key))
 	}
 
+	finishLookup("hit")
 	caddyhttp.SetVar(r.Context(), m.Var, rt.Upstream)
 	for k, v := range rt.Headers {
 		r.Header.Set(k, v)
